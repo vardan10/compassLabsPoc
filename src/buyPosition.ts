@@ -19,6 +19,8 @@ async function buyPosition(chainId: string, tokenName: string) {
     const smartAccount = await initBiconomySmartAccount(chainId);
     const WALLET_ADDRESS = await smartAccount.getAccountAddress();
 
+    console.log("here: " + WALLET_ADDRESS)
+
     // Get available pendle markets
     const { markets } = await compassApiSDK.pendle.markets({
         chain: network.pendleName,
@@ -43,6 +45,7 @@ async function buyPosition(chainId: string, tokenName: string) {
     // Build batched transactions
     const result = await compassApiSDK.smartAccount.accountBatchedUserOperations({
         chain: network.pendleName,
+        sender: WALLET_ADDRESS,
         operations: [
             {
                 body: {

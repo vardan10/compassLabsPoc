@@ -2,6 +2,7 @@ import { initBiconomySmartAccount, initViemAccount } from "./biconomy";
 import { CompassApiSDK } from "@compass-labs/api-sdk";
 import dotenv from "dotenv";
 import { networks } from "../config";
+import { ContractName } from "@compass-labs/api-sdk/models/operations/genericallowance";
 
 dotenv.config();
 
@@ -10,26 +11,18 @@ const compassApiSDK = new CompassApiSDK({
 });
 
 async function sellPosition(chainId: string, tokenName: string) {
-    const transactions: { to: string, data: string, value: number }[] = [];
-
     // Get network details
     const network = networks[chainId];
 
-    // Init viem account
-    const account = initViemAccount();
-    const WALLET_ADDRESS = account.address;
-
     // Create biconomy smart account
     const smartAccount = await initBiconomySmartAccount(chainId);
+    const WALLET_ADDRESS = await smartAccount.getAccountAddress();
 
     // Get available pendle markets
     const { markets } = await compassApiSDK.pendle.markets({
         chain: network.pendleName,
     });
 
-    console.log("Available markets: " + JSON.stringify(markets))
-
-    // Select required pendle markets
     // Select required pendle markets
     const market = markets.find((market) => market.name === tokenName);
 
@@ -49,47 +42,40 @@ async function sellPosition(chainId: string, tokenName: string) {
         marketAddress,
     });
 
-    const pTAllowance = await compassApiSDK.universal.allowance({
-        chain: network.pendleName,
-        user: WALLET_ADDRESS,
-        token: ptAddress,
-        contractName: "PendleRouter",
-    });
-
-    if (pTAllowance.amount < userPosition.ptBalance) {
-        // Set new allowance if current PT allowance for Pendle Router is insufficient
-        const setAllowanceForPtTx = await compassApiSDK.universal.allowanceSet({
-            chain: network.pendleName,
-            sender: WALLET_ADDRESS,
-            token: ptAddress,
-            contractName: "PendleRouter",
-            amount: userPosition.ptBalance,
-        });
-
-        transactions.push({
-            to: setAllowanceForPtTx.to,
-            data: setAllowanceForPtTx.data,
-            value: setAllowanceForPtTx.value,
-        })
-    }
-
-    // Sell PT for the market’s Underlying Asset
-    const sellPtTx = await compassApiSDK.pendle.sellPt({
+    // Build batched transactions
+    const result = await compassApiSDK.smartAccount.accountBatchedUserOperations({
         chain: network.pendleName,
         sender: WALLET_ADDRESS,
-        marketAddress,
-        amount: userPosition.ptBalance,
-        maxSlippagePercent: 0.1,
-    });
+        operations: [
+            {
+                body: {
+                   actionType: "ALLOWANCE_INCREASE",
+                    token: ptAddress,
+                    contractName: "PendleRouter",
+                    amount: userPosition.ptBalance,
+                },
+            },
+            {
+                body: {
+                    actionType: "PENDLE_SELL_PT",
+                    marketAddress,
+                    amount: userPosition.ptBalance,
+                    maxSlippagePercent: 0.1,
+                },
+            },
+        ]
+    })
 
-    transactions.push({
-        to: sellPtTx.to,
-        data: sellPtTx.data,
-        value: sellPtTx.value,
-    });
+    const operations = result.operations.map((op) => ({
+        to: op.to as `0x${string}`,
+        data: op.data as `0x${string}`,
+        value: op.value ? String(op.value) : '0',
+    }));
 
     // Send biconomy transaction
-    await smartAccount.sendTransaction(transactions);
+    const userOP = await smartAccount.sendTransaction(operations);
+    const txHash = await userOP.waitForTxHash();
+    console.log("Here: " + JSON.stringify(txHash))
 }
 
-await sellPosition("8453", "mUSDC");
+await sellPosition("8453", "cbETH");

@@ -2,7 +2,6 @@ import { initBiconomySmartAccount, initViemAccount } from "./biconomy";
 import { CompassApiSDK } from "@compass-labs/api-sdk";
 import dotenv from "dotenv";
 import { networks } from "../config";
-import { ContractName } from "@compass-labs/api-sdk/models/operations/genericallowance";
 
 dotenv.config();
 
@@ -49,9 +48,9 @@ async function sellPosition(chainId: string, tokenName: string) {
         operations: [
             {
                 body: {
-                   actionType: "ALLOWANCE_INCREASE",
+                    actionType: "SET_ALLOWANCE",
                     token: ptAddress,
-                    contractName: "PendleRouter",
+                    contract: "PendleRouter",
                     amount: userPosition.ptBalance,
                 },
             },
